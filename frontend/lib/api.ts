@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type {
-  AgentAnswer, EnvironmentalEvent, Forecast, Freshness, GibsLayers, Health, JevDecision,
-  ModelRun, Observation, RegionalForecast, RegionalHistory, SourceCatalog, Station, TimeSeries,
+  AgentAnswer, EnvironmentalEvent, Freshness, GibsLayers, Health, JevDecision,
+  DashboardSnapshot, ForecastRun, ModelRun, Observation, RegionalForecast, RegionalHistory, SourceCatalog, Station, TimeSeries,
 } from "@/lib/types";
 
 const stationSchema = z.object({
@@ -40,6 +40,7 @@ export const getSeries = (station: string, variable: string, days: number, aggre
 export const getFreshness = (variable: string) => api<Freshness>(`/api/freshness?variable_id=${encodeURIComponent(variable)}`);
 export const getEvents = () => api<EnvironmentalEvent[]>("/api/events");
 export const getHealth = () => api<Health>("/api/health");
+export const getDashboard = () => api<DashboardSnapshot>("/api/dashboard");
 export const getSources = () => api<SourceCatalog>("/api/sources");
 export const getGibsLayers = () => api<GibsLayers>("/api/sources/gibs");
 export const getJevDecisions = (limit = 30) => api<{
@@ -51,8 +52,10 @@ export const getRegionalHistory = (variable: string, days = 7) =>
   api<RegionalHistory>(`/api/regional/history?variable_id=${encodeURIComponent(variable)}&days=${days}`);
 export const getRuns = (station: string, variable: string, limit = 20) =>
   api<ModelRun[]>(`/api/ml/models?station_id=${encodeURIComponent(station)}&variable_id=${encodeURIComponent(variable)}&limit=${limit}`);
-export const getForecast = (station: string, variable: string, horizon: number) =>
-  api<Forecast>(`/api/ml/forecast?station_id=${encodeURIComponent(station)}&variable_id=${encodeURIComponent(variable)}&horizon_hours=${horizon}`);
+export const getAutomaticForecasts = (station?: string, variable = "PM25") =>
+  api<{ count: number; generated_at: string | null; forecasts: ForecastRun[] }>(
+    `/api/ml/forecasts?variable_id=${encodeURIComponent(variable)}${station ? `&station_id=${encodeURIComponent(station)}` : ""}`,
+  );
 export const getAnomalies = (variable: string, station?: string) => api<{
   status?: string; stations_evaluated?: number; anomalies: Array<Record<string, unknown>>;
 }>(`/api/ml/anomalies?variable_id=${encodeURIComponent(variable)}${station ? `&station_id=${encodeURIComponent(station)}` : "&spatial=true"}`);
@@ -62,8 +65,3 @@ export const getClusters = () => api<{ status: string; n_clusters: number; clust
 export const askAgent = (query: string) => api<AgentAnswer>("/api/agent/query", {
   method: "POST", body: JSON.stringify({ query }),
 });
-export const syncNow = () => api<Record<string, unknown>>("/api/ingestion/sync", { method: "POST" });
-export const ingestHistorical = () => api<Record<string, unknown>>("/api/ingestion/historical", { method: "POST" });
-export const trainModel = (station: string, variable: string) => api<ModelRun & {
-  status: string; reason?: string;
-}>(`/api/ml/train?station_id=${encodeURIComponent(station)}&variable_id=${encodeURIComponent(variable)}`, { method: "POST" });

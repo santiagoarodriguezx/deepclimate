@@ -67,7 +67,6 @@ button { cursor: pointer; }
 .data-table tbody tr { transition: background .12s ease; }
 .data-table tbody tr:hover { background: var(--surface-hover); }
 .leaflet-container { z-index: 0; height: 100%; width: 100%; background: var(--surface-hover); font: inherit; }
-.siata-map .leaflet-tile { filter: grayscale(1) contrast(.92); }
 .leaflet-control-attribution { font-size: 9px !important; }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--fg); }
 .markdown-content p { margin: .55rem 0; }

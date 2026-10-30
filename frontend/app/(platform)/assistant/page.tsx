@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { AssistantPanel } from "@/components/assistant/assistant-panel";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Jev · Asistente ambiental" };
 
 export default function AssistantPage() {
-  return <AssistantPanel />;
+  redirect("/");
 }

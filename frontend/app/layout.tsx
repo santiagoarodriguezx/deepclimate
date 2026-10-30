@@ -3,9 +3,9 @@ import { Providers } from "@/components/providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "SIATA Intelligence", template: "%s · SIATA Intelligence" },
+  title: { default: "DeepClimate", template: "%s · DeepClimate" },
   description: "Inteligencia ambiental, monitoreo de estaciones y análisis de datos SIATA para el Valle de Aburrá.",
-  applicationName: "SIATA Intelligence",
+  applicationName: "DeepClimate",
   robots: { index: false, follow: false },
 };
 

@@ -63,7 +63,7 @@ export type Freshness = {
   total_stations: number;
   stations_online: number;
   stations_offline: number;
-  average_lag_seconds: number;
+  average_lag_seconds: number | null;
   status_distribution: Record<string, number>;
   stations: Array<{ station_id: string; station_name: string; status: string; lag_seconds: number | null }>;
 };
@@ -95,6 +95,19 @@ export type Forecast = {
   forecast: Array<{ timestamp: string; prediction: number; lower: number; upper: number }>;
 };
 
+export type ForecastRun = {
+  id: number;
+  station_id: string;
+  variable_id: string;
+  horizon_hours: 24 | 48 | 72;
+  model_run_id: number | null;
+  generated_at: string;
+  status: string;
+  reason: string | null;
+  metrics: Record<string, number | null>;
+  forecast: Array<{ timestamp: string; prediction: number; lower: number; upper: number }>;
+};
+
 export type AgentAnswer = {
   query: string;
   answer: string;
@@ -115,7 +128,24 @@ export type Health = {
   status: string;
   platform: string;
   active_stations: number;
-  data_freshness: { stations_online: number; average_lag_seconds: number };
+  data_freshness: { stations_online: number; average_lag_seconds: number | null };
+};
+
+export type DashboardSnapshot = {
+  generated_at: string;
+  refresh_after_seconds: number;
+  stations: Station[];
+  station_counts: Record<string, number>;
+  observations: Record<string, Observation[]>;
+  regional_forecasts: Record<string, RegionalForecast>;
+  regional_history: Record<string, RegionalHistory>;
+  network_history: Record<string, RegionalHistory>;
+  model_forecasts: ForecastRun[];
+  models: ModelRun[];
+  events: EnvironmentalEvent[];
+  freshness: Freshness;
+  sources: SourceCatalog;
+  pipeline_runs: SourceRun[];
 };
 
 export type SourceRun = {
@@ -191,7 +221,7 @@ export type RegionalHistory = {
   variable_id?: string;
   unit?: string;
   latest_fetch_at?: string;
-  series: Array<{ timestamp: string; value: number }>;
+  series: Array<{ timestamp: string; value: number; count?: number }>;
 };
 
 export type GibsLayer = {
@@ -202,6 +232,7 @@ export type GibsLayer = {
   tile_matrix_set: string;
   max_zoom: number | null;
   formats: string[];
+  legend_url?: string | null;
 };
 
 export type GibsLayers = {

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { OperationsCenter } from "@/components/operations/operations-center";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Decisiones de Jev" };
 
 export default function OperationsPage() {
-  return <OperationsCenter />;
+  redirect("/");
 }

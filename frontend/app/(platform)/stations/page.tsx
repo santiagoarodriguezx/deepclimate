@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { StationExplorer } from "@/components/stations/station-explorer";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Estaciones SIATA" };
 
 export default function StationsPage() {
-  return <StationExplorer />;
+  redirect("/");
 }

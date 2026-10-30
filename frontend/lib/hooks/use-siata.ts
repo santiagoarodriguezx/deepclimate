@@ -2,9 +2,19 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  getEvents, getFreshness, getGibsLayers, getHealth, getJevDecisions, getLatest,
+  getDashboard, getEvents, getFreshness, getGibsLayers, getHealth, getJevDecisions, getLatest,
   getRegionalForecast, getRegionalHistory, getSeries, getSources, getStations,
 } from "@/lib/api";
+
+export function useDashboard() {
+  return useQuery({
+    queryKey: ["dashboard"],
+    queryFn: getDashboard,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: true,
+  });
+}
 
 export function useStations() {
   return useQuery({ queryKey: ["stations"], queryFn: getStations, staleTime: 120_000 });
