@@ -1,6 +1,6 @@
-# SIATA Intelligence
+# DeepClimate
 
-Plataforma de inteligencia ambiental para el Valle de Aburrá. Reúne observaciones de estaciones SIATA, pronósticos de modelo con procedencia explícita, análisis reproducibles y una interfaz Next.js para explorar estaciones, mapas, fuentes, operaciones y modelos.
+Plataforma autónoma de inteligencia meteorológica y ambiental para el Valle de Aburrá. Un dashboard de actualización continua reúne estaciones SIATA, pronósticos regionales, historial NASA POWER, teselas GPM, estado de conectores y resultados validados de modelos.
 
 > Cada dato conserva su fuente, hora válida y escala. Los pronósticos de grilla y los análisis regionales nunca se presentan como mediciones de una estación SIATA.
 
@@ -11,10 +11,15 @@ Plataforma de inteligencia ambiental para el Valle de Aburrá. Reúne observacio
 - Pronóstico regional de Open-Meteo guardado por versión de captura y separado de observaciones.
 - Análisis meteorológico diario NASA POWER, normalizado con unidades y coordenadas devueltas por el proveedor.
 - Catálogo de metadatos de archivos de radar IDEAM; los volúmenes RAW no se descargan ni se interpretan.
-- Visualización bajo demanda de capas NASA GIBS: IMERG Early y MODIS Terra True Color.
+- Mapa del Valle con MapLibre GL y teselas vectoriales OpenFreeMap/OpenStreetMap, capas SIATA por variable, pronóstico regional y NASA GIBS IMERG/MODIS con leyendas, opacidad y tiempos disponibles del catálogo.
+- Cobertura por variable, hora válida, antigüedad, calidad del registro y latencia de cada ciclo de proveedor.
+- Tendencias de contaminación calculadas como mediana horaria entre estaciones SIATA validadas; acumulados 1/3/6/24 h proceden solo de pronóstico Open-Meteo cuando hay una serie horaria completa.
 - Modelo Ridge autoregresivo por estación para PM2.5, con validación temporal y baseline de persistencia; un candidato solo se promueve si lo supera.
 - Jev combina reglas deterministas auditables con evidencia de SIATA, pronósticos y análisis. NVIDIA NIM se consulta por API remota para explicar esa evidencia; OpenRouter es un proveedor remoto alternativo.
 - Ciclos independientes para SIATA, fuentes externas y selección automática de modelos, con checkpoints y leases persistidos en la base de datos.
+- Un único snapshot de lectura consolida observaciones, pronóstico, análisis regional, estaciones, eventos, modelos y salud del pipeline; la interfaz se actualiza cada minuto sin acciones de operador.
+- Worker horario que genera y persiste instantáneas de 24, 48 y 72 horas por estación cuando hay un modelo campeón y observaciones recientes; los ciclos son idempotentes.
+- Exploración automática de todas las estaciones candidatas con historial suficiente, sin límite fijo que deje estaciones sin evaluar.
 - Verificación de disponibilidad de endpoints SIATA una vez al día en una tarea aislada, para que un probe lento no bloquee la ingestión de estaciones.
 
 ## Arquitectura
@@ -32,16 +37,22 @@ flowchart LR
   RADAR --> RUNS
   REG --> API[FastAPI]
   OBS --> API
-  API --> WEB[Next.js App Router]
   OBS --> ML[Ridge + validación temporal]
   ML --> API
+  ML --> FCAST[(Pronósticos 24 / 48 / 72 h)]
+  FCAST --> API
+  RUNS --> API
+  API --> SNAP[Snapshot consolidado cada 60 s]
+  SNAP --> WEB
   API --> JEV[Jev: políticas y herramientas internas]
   JEV -. explicación remota opcional .-> NIM[NVIDIA NIM API]
   JEV -. fallback remoto opcional .-> OR[OpenRouter API]
   GIBS[NASA GIBS / IMERG] -. teselas en navegador .-> WEB
 ```
 
-La base SQLAlchemy usa SQLite por defecto. Las tablas `observations` y `regional_data` tienen propósitos distintos; las fuentes externas no se mezclan en el repositorio de mediciones SIATA. Las decisiones de Jev, ejecuciones y leases se registran para inspección y reintentos.
+La base SQLAlchemy usa SQLite por defecto. `observations` y `regional_data` mantienen escalas, tiempos válidos y procedencia separados: una celda meteorológica o un raster satelital no se fusionan como si fueran mediciones de estación. Los workers independientes comparten normalización por fuente, registro de ejecuciones, reintentos y persistencia; el endpoint `/api/dashboard` presenta todo en un mismo snapshot coherente.
+
+En el mapa, los puntos a color corresponden a lecturas SIATA recientes y válidas; los puntos huecos identifican estaciones sin lectura actual confiable; el marcador ámbar identifica la celda regional Open-Meteo; el raster NASA se etiqueta como estimación satelital. El modo de densidad se habilita con al menos ocho lecturas recientes y dibuja halos visuales de 850 m alrededor de las estaciones. No asigna valores a los píxeles ni calcula interpolación espacial. En el snapshot auditado el 30-10-2026, PM2.5 tenía cobertura reciente de 22 de 101 estaciones de aire, insuficiente para inferir una superficie numérica del Valle.
 
 ## Fuentes y cobertura
 
@@ -62,14 +73,9 @@ Next.js App Router, React, TypeScript y Tailwind CSS. El diseño usa una paleta 
 
 | Ruta | Función |
 |---|---|
-| `/` | Dashboard, indicadores con hora, series SIATA y pronóstico externo separado. |
-| `/stations` | Búsqueda, filtros y mapa de estaciones. |
-| `/stations/[stationId]` | Detalle, mediciones e histórico de estación. |
-| `/models` | Métricas y versiones ML disponibles. |
-| `/assistant` | Consultas a Jev respaldadas por herramientas y datos del backend. |
-| `/sources` | Catálogo, estado de conectores, ejecuciones y límites de datos. |
-| `/satellite` | Mapa de teselas NASA GIBS e inventario SIATA geolocalizado. |
-| `/operations` | Historial de decisiones de Jev y ejecuciones programadas. |
+| `/` | Vista central con sensores, pronósticos, estaciones, mapa OpenFreeMap, capas IMERG/MODIS, tendencias SIATA, NASA POWER, conectores, eventos y métricas ML. React Query actualiza el snapshot cada 60 s. |
+| `/stations/[stationId]` | Ficha opcional desde un marcador del mapa; lecturas históricas y pronósticos persistidos automáticamente. |
+| `/models`, `/stations`, `/assistant`, `/sources`, `/satellite`, `/operations` | Redirigen al panorama central para evitar dashboards y operaciones independientes. |
 
 La capa API está en `frontend/lib/api.ts`; los hooks TanStack están en `frontend/lib/hooks/`. El proxy de Next.js envía `/api/*` al backend usando una variable de servidor. La interfaz incluye estados de carga, error y ausencia de datos; no usa métricas de relleno.
 
@@ -77,11 +83,19 @@ La capa API está en `frontend/lib/api.ts`; los hooks TanStack están en `fronte
 
 El modelo disponible es un Ridge autoregresivo para PM2.5 por estación, con rezagos horarios 1, 2 y 24, media móvil de seis horas y validación cronológica sobre un segmento continuo. Exige al menos 72 puntos horarios consecutivos y registra MAE, RMSE y R² cuando corresponde. La predicción compara contra persistencia; un candidato que no la supera no se promueve. El intervalo derivado del error no es una garantía calibrada para extremos.
 
-La tarea automática explora hasta ocho estaciones con suficientes observaciones recientes. La calidad y continuidad se validan durante entrenamiento. No existe todavía modelo entrenado de lluvia ni fusión de pronóstico externo con sensores SIATA: hacen falta series locales pareadas y suficientes para validación temporal sin leakage.
+La tarea automática explora todas las estaciones con al menos 72 observaciones recientes; la continuidad horaria y calidad se comprueban durante entrenamiento. Un segundo worker horario guarda los tres horizontes para cada estación con un modelo aprobado y datos no vencidos. Si faltan datos, el registro conserva el estado y el motivo en lugar de fabricar una predicción. No existe todavía modelo entrenado de lluvia ni fusión de pronóstico externo con sensores SIATA: hacen falta series locales pareadas y suficientes para validación temporal sin leakage.
 
 Jev usa un motor de decisión determinista y tipado para habilitar ingestas y aceptar modelos. La solicitud especifica Typesafe, pero esta copia del proyecto no contiene SDK, URL de servicio ni contrato de petición/respuesta; por eso el proveedor figura como no disponible y no se inventa una integración. Cuando `NVIDIA_API_KEY` está configurada, las explicaciones se envían a NVIDIA NIM en `integrate.api.nvidia.com`; si no, puede usarse OpenRouter cuando tenga credenciales. Sin proveedor configurado, responde el resumen determinista de la evidencia. La clave permanece en el backend. No se instalan pesos, CUDA, PyTorch ni contenedores NIM locales. La pregunta del usuario y un resumen de evidencia se envían al proveedor remoto; no incluyas datos sensibles.
 
-La integración NIM solo resume datos consultados por las herramientas del proyecto: no crea mediciones ni pronósticos. Aunque NVIDIA ofrece endpoints climáticos, CorrDiff está entrenado para el territorio continental de EE. UU. y la API pública de FourCastNet documenta muestras de entrada predefinidas. No se usan para afirmar pronósticos para Medellín.
+La integración NIM solo resume datos consultados por las herramientas del proyecto: no crea mediciones ni pronósticos. Cada llamada efectivamente ejecutada guarda proveedor, endpoint, modelo, dominio, entrada/salida, estado, latencia y error en `source_runs`; las API públicas solo exponen metadatos de ejecución y longitudes, no el texto privado de entrada/salida. Una clave configurada sin llamada aparece como credencial configurada, no como inferencia. Aunque NVIDIA ofrece APIs climáticas, CorrDiff está entrenado para el territorio continental de EE. UU. y la API pública de FourCastNet requiere seleccionar muestras de entrada predefinidas; no acepta la inicialización observada de SIATA para producir un pronóstico local verificable. No se usan para afirmar pronósticos para Medellín. [FourCastNet API](https://docs.api.nvidia.com/nim/reference/nvidia-fourcastnet-infer) · [CorrDiff API](https://docs.api.nvidia.com/nim/reference/nvidia-corrdiff).
+
+### Cartografía y productos satelitales
+
+La base cartográfica usa MapLibre GL JS (open source) con el estilo Positron de OpenFreeMap y datos OpenStreetMap. OpenFreeMap publica hoy su instancia sin API key ni límites de solicitudes; es gratuita también para uso comercial. Su servicio público se ofrece “as is”, sin SLA, y puede cambiar o discontinuarse. No es posible garantizar un proveedor de mapas externo gratuito para siempre. `NEXT_PUBLIC_OPENFREEMAP_STYLE_URL` permite cambiarlo por otro estilo o por una instancia propia; la alternativa de independencia total es autoalojar datos vectoriales PMTiles, lo que sí requiere almacenamiento y ancho de banda propios.
+
+La capa IMERG ofrece la leyenda que NASA publica en WMTS, ajuste de opacidad y un selector temporal construido con los rangos declarados por GIBS; MODIS True Color usa su tiempo diario publicado. La fecha del producto se conserva como vigencia y no se describe como una observación en vivo. Los mapas de teselas son visualización: no se muestrean sus colores para entrenar modelos. [NASA GIBS WMTS y leyendas](https://nasa-gibs.github.io/gibs-api-docs/access-advanced-topics/) · [NASA IMERG](https://gpm.nasa.gov/data/imerg).
+
+El estado actual no ofrece todavía una fuente de imágenes IDEAM georreferenciadas en un formato que el pipeline pueda ingerir y procesar, ni un endpoint de NVIDIA Vision configurado para el dominio local. El catálogo IDEAM integrado es solo de metadatos de archivo radar. Por eso no se publican detecciones de nubosidad/convección ni features de visión como si fueran resultados procesados. La disponibilidad de FourCastNet y CorrDiff se limita por sus contratos de entrada y dominio; el proyecto no descarga contenedores ni pesos de NVIDIA ni ejecuta modelos pesados localmente.
 
 ## Requisitos e instalación local
 
@@ -127,8 +141,10 @@ Las variables completas y valores seguros están en `.env.example` y `frontend/.
 | `NASA_POWER_SYNC_ENABLED`, `NASA_POWER_SYNC_INTERVAL_SECONDS` | Análisis diario, por defecto 86 400 s. |
 | `IDEAM_RADAR_CATALOG_ENABLED`, `IDEAM_RADAR_CATALOG_INTERVAL_SECONDS` | Catálogo de metadatos, por defecto 21 600 s. |
 | `SIATA_AUTO_ML_ENABLED`, `SIATA_AUTO_ML_INTERVAL_SECONDS` | Selección de modelos, por defecto 21 600 s. |
+| `SIATA_FORECASTS_ENABLED`, `SIATA_FORECAST_INTERVAL_SECONDS` | Persistencia automática de horizontes por estación; por defecto cada 3 600 s. |
 | `NVIDIA_API_KEY`, `NVIDIA_MODEL` | Explicación remota con NVIDIA NIM; la API key solo se lee en el backend. Modelo por defecto: `nvidia/nemotron-3.5-bolt-e4b`. |
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Proveedor remoto alternativo cuando no se configuró NVIDIA; nunca se exponen al navegador. |
+| `NEXT_PUBLIC_OPENFREEMAP_STYLE_URL` | URL de estilo vectorial MapLibre. Por defecto usa OpenFreeMap Positron sin clave. |
 | `SIATA_BACKEND_URL` | Destino server-side del proxy Next.js. |
 
 Cada ciclo puede deshabilitarse con `false`. No se requieren credenciales Typesafe: el proveedor permanece señalado como no disponible hasta que exista un contrato verificable.
@@ -138,15 +154,15 @@ Cada ciclo puede deshabilitarse con `false`. No se requieren credenciales Typesa
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/health` | Estado del servicio y frescura. |
+| GET | `/api/dashboard` | Snapshot consolidado para la vista única. |
 | GET | `/api/stations`, `/api/stations/{id}` | Inventario y detalle. |
 | GET | `/api/observations/latest`, `/api/observations/timeseries` | Observaciones SIATA. |
 | GET | `/api/freshness`, `/api/events` | Disponibilidad y eventos. |
 | GET | `/api/sources`, `/api/sources/gibs` | Catálogo y metadatos disponibles de capas. |
 | GET | `/api/regional/forecast`, `/api/regional/history` | Pronósticos y análisis regionales con procedencia. |
 | GET | `/api/jev/decisions` | Auditoría de políticas. |
-| GET/POST | `/api/ml/models`, `/api/ml/train`, `/api/ml/forecast`, `/api/ml/anomalies` | Entrenamiento y análisis ML. |
+| GET | `/api/ml/models`, `/api/ml/forecasts`, `/api/ml/anomalies` | Modelos evaluados, pronósticos automáticos y análisis. |
 | POST | `/api/agent/query` | Preguntas a Jev con evidencia del proyecto. |
-| POST | `/api/ingestion/sync` | Sincronización SIATA manual. |
 
 ## Verificación
 
@@ -176,10 +192,10 @@ backend/
   database/           SQLAlchemy, modelos y persistencia
   ingestion/          Adaptadores SIATA y conectores regionales
   ml/                 Pronóstico y análisis ambiental
-  services/           Scheduler, catálogo, GIBS y AutoML
+  services/           Scheduler, snapshot, catálogo, GIBS, AutoML y pronósticos persistidos
 frontend/
   app/                Rutas, layouts y estados globales
-  components/         Dashboard, estaciones, mapas, ML, fuentes y asistente
+  components/         Panorama, estaciones, mapas y visualizaciones compartidas
   lib/                Cliente API, tipos, utilidades y hooks
 tests/                Pruebas unitarias offline
 data/                 Base SQLite y archivos locales ignorados por Git
@@ -187,10 +203,12 @@ data/                 Base SQLite y archivos locales ignorados por Git
 
 ## Límites conocidos
 
-- No hay interpolación espacial: los puntos de estaciones y teselas conservan sus escalas originales.
+- No hay interpolación numérica espacial: los puntos de estaciones y teselas conservan sus escalas originales. El halo de densidad es una ayuda visual de los sensores disponibles, no una estimación del espacio entre estaciones.
 - Las capturas de feeds SIATA que no traen hora de observación no se presentan como tasas actuales ni se usan en análisis temporales.
 - El modelo local cubre PM2.5; faltan continuidad y etiquetas meteorológicas para entrenar y evaluar un modelo de precipitación propio.
-- La capa IMERG de GIBS es solo visual; la ingestión de datos cuantitativos GPM requeriría configurar acceso a productos científicos y validar su uso.
+- La capa IMERG de GIBS es solo visual; la ingestión de datos cuantitativos GPM requeriría configurar acceso a productos científicos y validar su uso. NASA indica una latencia de publicación para los productos IMERG; la fecha visible del tile no equivale a tiempo real. [Latencia de visualización NASA](https://gpm.nasa.gov/data/visualization/worldview).
+- Las capturas SIATA de lluvia/nivel con unidad u hora no validada no producen acumulados observados ni riesgo hidrológico. Los acumulados del panorama se etiquetan como pronóstico Open-Meteo y solo se calculan con todos los pasos horarios presentes.
+- No se dispone de datos suficientes para una superficie interpolada, pronóstico local de precipitación, análisis de visión IDEAM/NVIDIA o ráfagas observadas; esos valores no se inventan.
 - IDEAM se consulta como archivo de metadatos retrasado, no como radar en vivo; no se decodifican volúmenes RAW.
 - Typesafe no está conectado porque el proyecto no aporta endpoint ni contrato de integración.
 - La explicación NVIDIA necesita una `NVIDIA_API_KEY` válida. Sin ella, Jev usa OpenRouter si está configurado o su resumen determinista; no hay inferencia de lenguaje local.
