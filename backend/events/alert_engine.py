@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from backend.database.repository import EnvironmentalRepository
 from backend.database.models import EnvironmentalEvent
-from backend.monitoring.freshness import is_recent_observation
+from backend.monitoring.freshness import INVALID_OBSERVATION_QUALITY, is_recent_observation
 from backend.ml.anomalies.spatial import SpatialAnomalyDetector
 from backend.ml.anomalies.temporal import TemporalAnomalyDetector
 
@@ -35,7 +35,7 @@ class AlertEngine:
         latest_pm25 = [
             row for row in self.repo.get_latest_by_variable("PM25")
             if row["station_type"] == "air_quality"
-            and row["quality_status"] not in {"unvalidated_unit", "retrieval_timestamp"}
+            and row["quality_status"] not in INVALID_OBSERVATION_QUALITY
             and is_recent_observation(row.get("observed_at"))
         ]
         if len(latest_pm25) >= 3:
@@ -95,7 +95,8 @@ class AlertEngine:
         active_rain_stations = [
             s for s in latest_rain
             if s["value"] > 5.0
-            and s["quality_status"] not in {"unvalidated_unit", "retrieval_timestamp"}
+            and s["quality_status"] not in INVALID_OBSERVATION_QUALITY
+            and is_recent_observation(s.get("observed_at"))
         ]
         if len(active_rain_stations) >= 3:
             max_rain = max(s["value"] for s in active_rain_stations)

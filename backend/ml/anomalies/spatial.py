@@ -7,6 +7,7 @@ and local spatial z-deviation to detect localized sensor abnormalities or plumes
 
 import math
 from typing import List, Dict, Any
+from backend.monitoring.freshness import INVALID_OBSERVATION_QUALITY
 
 
 def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -48,7 +49,7 @@ class SpatialAnomalyDetector:
         station_observations = [
             row for row in station_observations
             if row.get("station_type") == "air_quality"
-            and row.get("quality_status") not in {"unvalidated_unit", "retrieval_timestamp"}
+            and row.get("quality_status") not in INVALID_OBSERVATION_QUALITY
         ]
         if len(station_observations) < 3:
             return []

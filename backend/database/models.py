@@ -11,7 +11,7 @@ Canonical schema matching the project requirements:
 import datetime
 from sqlalchemy import (
     Column, Integer, Float, String, Boolean, DateTime,
-    ForeignKey, Text, Index
+    ForeignKey, Text, Index, UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -206,6 +206,42 @@ class ModelRun(Base):
         return result
 
 
+class ForecastRun(Base):
+    """Latest automatic station forecast for each variable and horizon."""
+
+    __tablename__ = "forecast_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    station_id = Column(String(64), ForeignKey("stations.id"), nullable=False, index=True)
+    variable_id = Column(String(32), nullable=False, index=True)
+    horizon_hours = Column(Integer, nullable=False)
+    model_run_id = Column(Integer, ForeignKey("model_runs.id"), nullable=True, index=True)
+    generated_at = Column(DateTime, nullable=False, index=True)
+    status = Column(String(32), nullable=False, index=True)
+    reason = Column(Text, nullable=True)
+    metrics_json = Column(Text, nullable=False, default="{}")
+    forecast_json = Column(Text, nullable=False, default="[]")
+
+    __table_args__ = (
+        UniqueConstraint("station_id", "variable_id", "horizon_hours", name="uq_forecast_station_variable_horizon"),
+    )
+
+    def to_dict(self):
+        import json
+        return {
+            "id": self.id,
+            "station_id": self.station_id,
+            "variable_id": self.variable_id,
+            "horizon_hours": self.horizon_hours,
+            "model_run_id": self.model_run_id,
+            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "status": self.status,
+            "reason": self.reason,
+            "metrics": json.loads(self.metrics_json or "{}"),
+            "forecast": json.loads(self.forecast_json or "[]"),
+        }
+
+
 class RegionalDatum(Base):
     """Gridded/reanalysis products kept apart from SIATA station observations."""
 
@@ -278,6 +314,13 @@ class SourceRun(Base):
 
     def to_dict(self):
         import json
+        metadata = json.loads(self.metadata_json) if self.metadata_json else {}
+        if "input" in metadata or "output" in metadata:
+            # Keep prompts and generated text in server-side audit storage; public status APIs expose metadata only.
+            raw_metadata = metadata
+            metadata = {key: value for key, value in raw_metadata.items() if key not in {"input", "output"}}
+            metadata["input_chars"] = len(json.dumps(raw_metadata.get("input", ""), ensure_ascii=False))
+            metadata["output_chars"] = len(json.dumps(raw_metadata.get("output", ""), ensure_ascii=False))
         return {
             "id": self.id,
             "source_id": self.source_id,
@@ -287,7 +330,7 @@ class SourceRun(Base):
             "records_count": self.records_count,
             "latency_ms": self.latency_ms,
             "error_message": self.error_message,
-            "metadata": json.loads(self.metadata_json) if self.metadata_json else {},
+            "metadata": metadata,
         }
 
 

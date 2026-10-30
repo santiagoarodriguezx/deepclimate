@@ -131,8 +131,22 @@ CATALOG = [
         "limitation": (
             "Solo explica evidencia del proyecto. No ejecuta pesos localmente ni sustituye modelos de pronóstico. "
             "La pregunta y la evidencia resumida se envían al servicio remoto. La API de CorrDiff cubre CONUS; "
-            "FourCastNet requiere entradas atmosféricas globales validadas."
+            "la API de FourCastNet opera con muestras predefinidas y no consume la inicialización SIATA del Valle de Aburrá."
         ),
+    },
+    {
+        "id": "model_forecasts",
+        "name": "DeepClimate · pronósticos automáticos por estación",
+        "category": "model_pipeline",
+        "url": "https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html",
+        "variables": ["PM2.5"],
+        "temporal_resolution": "24 h, 48 h y 72 h",
+        "spatial_resolution": "Estación SIATA con modelo validado y datos recientes",
+        "update_frequency": "Cada hora · worker backend",
+        "latency": "Se omite la predicción cuando faltan datos recientes o modelo campeón",
+        "license": "Inferencia Ridge con scikit-learn; resultados atribuidos a estación y versión del modelo",
+        "integration": "ingested",
+        "limitation": "El modelo de PM2.5 requiere historial horario consecutivo suficiente; temperatura y lluvia se pronostican por Open-Meteo, no por este modelo local.",
     },
 ]
 
@@ -164,8 +178,9 @@ def get_source_catalog(db: Session) -> dict:
             result["status"] = "available"
             result["last_run"] = None
         elif item["integration"] == "remote_api":
-            result["status"] = "configured" if os.getenv("NVIDIA_API_KEY", "").strip() else "not_configured"
-            result["last_run"] = None
+            configured = bool(os.getenv("NVIDIA_API_KEY", "").strip())
+            result["status"] = ("error" if run.status == "failed" else run.status) if run else ("configured" if configured else "not_configured")
+            result["last_run"] = run.to_dict() if run else None
         else:
             result["status"] = "not_integrated"
             result["last_run"] = None

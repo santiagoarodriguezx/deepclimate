@@ -4,20 +4,19 @@ Exposes clean REST APIs for Frontend, Agent, ML models, and Observability.
 """
 
 import datetime
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.database.connection import get_db_session
 from backend.database.repository import EnvironmentalRepository
-from backend.database.models import JevDecisionRecord, RegionalDatum
+from backend.database.models import ForecastRun, JevDecisionRecord, RegionalDatum, Station
 from backend.agent.decision import JevDecisionEngine
-from backend.monitoring.freshness import FreshnessMonitor, is_recent_observation
+from backend.monitoring.freshness import FreshnessMonitor, INVALID_OBSERVATION_QUALITY, is_recent_observation
 from backend.agent.jev import JevAgent
 from backend.agent.tools.env_tools import EnvironmentalToolKit
-from backend.ingestion.siata.historical import HistoricalLakeManager
-from backend.services.ingestion import run_ingestion_sync as run_siata_ingestion_sync
+from backend.services.dashboard import build_dashboard_snapshot
 from backend.services.source_catalog import get_source_catalog
 from backend.services.gibs import get_gibs_layers
 
@@ -27,6 +26,12 @@ router = APIRouter(prefix="/api")
 # Request/Response schemas
 class QueryRequest(BaseModel):
     query: str = Field(min_length=1, max_length=1200)
+
+
+@router.get("/dashboard")
+def get_dashboard(db: Session = Depends(get_db_session)):
+    """Read-only snapshot for the continuously refreshed unified interface."""
+    return build_dashboard_snapshot(db)
 
 
 @router.get("/stations")
@@ -168,26 +173,6 @@ def get_anomalies(
     return toolkit.detect_anomalies(station_id=station_id, variable_id=variable_id)
 
 
-@router.get("/ml/forecast")
-def get_forecast(
-    station_id: str = Query("ITA-CJUS"),
-    variable_id: str = Query("PM25"),
-    horizon_hours: int = Query(24, ge=6, le=72),
-    db: Session = Depends(get_db_session)
-):
-    toolkit = EnvironmentalToolKit(db)
-    return toolkit.forecast_variable(station_id=station_id, variable_id=variable_id, horizon_hours=horizon_hours)
-
-
-@router.post("/ml/train")
-def train_forecast_model(
-    station_id: str = Query(..., min_length=1, max_length=64),
-    variable_id: str = Query("PM25", min_length=1, max_length=32),
-    db: Session = Depends(get_db_session),
-):
-    return EnvironmentalToolKit(db).train_forecast_model(station_id, variable_id)
-
-
 @router.get("/ml/models")
 def get_model_runs(
     station_id: str = Query(..., min_length=1, max_length=64),
@@ -200,6 +185,28 @@ def get_model_runs(
     if not station:
         raise HTTPException(status_code=404, detail="Estación no encontrada.")
     return [run.to_dict() for run in repo.get_model_runs(station.id, variable_id, limit)]
+
+
+@router.get("/ml/forecasts")
+def get_automatic_forecasts(
+    station_id: Optional[str] = Query(None, min_length=1, max_length=64),
+    variable_id: str = Query("PM25", min_length=1, max_length=32),
+    limit: int = Query(500, ge=1, le=1000),
+    db: Session = Depends(get_db_session),
+):
+    query = db.query(ForecastRun).join(Station, Station.id == ForecastRun.station_id).filter(
+        Station.active.is_(True),
+        ForecastRun.variable_id == variable_id,
+    )
+    if station_id:
+        query = query.filter(ForecastRun.station_id == station_id)
+    rows = query.order_by(Station.municipality, Station.name, ForecastRun.horizon_hours).limit(limit).all()
+    latest = max((row.generated_at for row in rows if row.generated_at), default=None)
+    return {
+        "count": len(rows),
+        "generated_at": latest.isoformat() if latest else None,
+        "forecasts": [row.to_dict() for row in rows],
+    }
 
 
 @router.get("/ml/correlations")
@@ -221,7 +228,7 @@ def get_clusters(db: Session = Depends(get_db_session)):
         {"station_id": row["station_id"], "station_name": row["station_name"],
          "municipality": row["municipality"], "current_pm25": row["value"]}
         for row in repo.get_latest_by_variable("PM25")
-        if row["station_type"] == "air_quality" and row["quality_status"] not in {"unvalidated_unit", "retrieval_timestamp"}
+        if row["station_type"] == "air_quality" and row["quality_status"] not in INVALID_OBSERVATION_QUALITY
         and is_recent_observation(row.get("observed_at"))
     ]
     toolkit = EnvironmentalToolKit(db)
@@ -238,37 +245,6 @@ def ask_jev(request: QueryRequest, db: Session = Depends(get_db_session)):
     return agent.process_query(request.query)
 
 
-@router.post("/ingestion/sync")
-def run_ingestion_sync(db: Session = Depends(get_db_session)):
-    """
-    Executes source discovery and real-time ingestion pass across all SIATA networks.
-    """
-    return run_siata_ingestion_sync(db)
-
-
-@router.post("/ingestion/historical")
-def ingest_historical_sample(
-    archive_name: Optional[str] = Query(None, description="Nombre del archivo zip de IDEAM"),
-    db: Session = Depends(get_db_session)
-):
-    """
-    Downloads and ingests an official historical monthly zip from SIATA / IDEAM into the raw lake.
-    """
-    manager = HistoricalLakeManager()
-    try:
-        if not archive_name:
-            available = manager.list_available_archives()
-            if not available:
-                raise HTTPException(status_code=503, detail="SIATA no publicó archivos históricos disponibles.")
-            archive_name = available[-1]
-        try:
-            return manager.ingest_archive(archive_name, db)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        manager.close()
-
-
 @router.get("/health")
 def health_check(db: Session = Depends(get_db_session)):
     repo = EnvironmentalRepository(db)
@@ -277,7 +253,7 @@ def health_check(db: Session = Depends(get_db_session)):
 
     return {
         "status": "healthy" if freshness["stations_online"] else "degraded",
-        "platform": "SIATA Intelligence",
+        "platform": "DeepClimate",
         "active_stations": st_count,
         "data_freshness": {
             "stations_online": freshness["stations_online"],

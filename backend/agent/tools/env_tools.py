@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from backend.database.repository import EnvironmentalRepository
 from backend.database.models import RegionalDatum
-from backend.monitoring.freshness import FreshnessMonitor, is_recent_observation
+from backend.monitoring.freshness import FreshnessMonitor, INVALID_OBSERVATION_QUALITY, is_recent_observation
 from backend.agent.decision import JevDecisionEngine, persist_decision
 from backend.ml.anomalies.temporal import TemporalAnomalyDetector
 from backend.ml.anomalies.spatial import SpatialAnomalyDetector
@@ -158,7 +158,7 @@ class EnvironmentalToolKit:
         observations = [
             row for row in self.repo.get_latest_by_variable(variable_id)
             if is_recent_observation(row.get("observed_at"))
-            and row.get("quality_status") not in {"unvalidated_unit", "retrieval_timestamp"}
+            and row.get("quality_status") not in INVALID_OBSERVATION_QUALITY
         ]
         anomalies = self.spatial_detector.detect_spatial_anomalies(observations)
         return {
@@ -186,7 +186,7 @@ class EnvironmentalToolKit:
         start = now - datetime.timedelta(days=60)
         series = self.repo.get_time_series(
             station.id, variable_id, start, now, aggregation="hour",
-            exclude_quality_status=["unvalidated_unit", "retrieval_timestamp"],
+            exclude_quality_status=list(INVALID_OBSERVATION_QUALITY),
         )
         fc = self.forecaster.forecast(series, runs[0].to_dict(include_artifact=True)["artifact"], horizon_hours)
         latest_timestamp = series[-1]["timestamp"] if series else None
@@ -213,7 +213,7 @@ class EnvironmentalToolKit:
         end = datetime.datetime.utcnow()
         series = self.repo.get_time_series(
             station.id, variable_id, end - datetime.timedelta(days=60), end,
-            aggregation="hour", exclude_quality_status=["unvalidated_unit", "retrieval_timestamp"],
+            aggregation="hour", exclude_quality_status=list(INVALID_OBSERVATION_QUALITY),
         )
         result = self.forecaster.train(series)
         if result["status"] != "trained":
@@ -276,7 +276,7 @@ class EnvironmentalToolKit:
         """Finds Pearson and Spearman correlation between two variables (e.g. rain vs PM2.5)."""
         now = datetime.datetime.utcnow()
         start = now - datetime.timedelta(days=days)
-        unreliable = ["unvalidated_unit", "retrieval_timestamp"]
+        unreliable = list(INVALID_OBSERVATION_QUALITY)
         s_a = self.repo.get_time_series(
             station_id, var_a, start, now, aggregation="hour", exclude_quality_status=unreliable
         )

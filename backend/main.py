@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SIATA Intelligence API",
+    title="DeepClimate API",
     description="Experimental Environmental AI Platform for the Aburrá Valley consuming official SIATA data.",
     version="2.1.0",
     lifespan=lifespan
@@ -59,7 +59,7 @@ app.include_router(router)
 @app.get("/")
 def root():
     return {
-        "service": "SIATA Intelligence API",
+        "service": "DeepClimate API",
         "status": "available",
         "docs": "/docs",
         "frontend": "Start the Next.js application from frontend/.",

@@ -12,6 +12,7 @@ import datetime
 import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
+from backend.database.models import SourceRun
 from backend.agent.tools.env_tools import EnvironmentalToolKit
 from backend.agent.planner import QueryPlanner
 from backend.agent.llm import configured_assistant
@@ -24,7 +25,7 @@ class JevAgent:
     MAX_TOOL_CALLS = 15
     MAX_EXECUTION_TIME_SECONDS = 30.0
 
-    SYSTEM_PROMPT = """Eres Jev, el cerebro de inteligencia ambiental de SIATA Intelligence para el Valle de Aburrá.
+    SYSTEM_PROMPT = """Eres Jev, el cerebro de inteligencia ambiental de DeepClimate para el Valle de Aburrá.
 Tu función es interpretar datos observacionales oficiales, ejecutar herramientas de machine learning y estadística, y comunicar hallazgos de forma rigurosa, clara y honesta.
 
 REGLAS ESTRICTAS:
@@ -102,6 +103,9 @@ REGLAS ESTRICTAS:
             except Exception as exc:
                 logger.warning("Remote explanation unavailable (%s); using local evidence summary.", type(exc).__name__)
                 ai_provider = "local_fallback"
+            execution = getattr(self.assistant, "last_execution", None)
+            if execution:
+                self._persist_remote_execution(self.assistant_provider or "remote_llm", execution)
 
         # Compile evidence report
         evidence_summary = {
@@ -122,6 +126,26 @@ REGLAS ESTRICTAS:
             "ai_provider": ai_provider,
             "ai_model": ai_model,
         }
+
+    def _persist_remote_execution(self, source_id: str, execution: dict) -> None:
+        """Persist measured remote calls; a configured API key alone is not an inference."""
+        try:
+            started = datetime.datetime.fromisoformat(execution["started_at"].replace("Z", "+00:00"))
+            finished = datetime.datetime.fromisoformat(execution["finished_at"].replace("Z", "+00:00"))
+            self.db.add(SourceRun(
+                source_id=source_id,
+                started_at=started.replace(tzinfo=None),
+                finished_at=finished.replace(tzinfo=None),
+                status=execution["status"],
+                records_count=1,
+                latency_ms=execution["latency_ms"],
+                error_message=execution.get("error"),
+                metadata_json=json.dumps(execution, ensure_ascii=False, default=str),
+            ))
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            logger.exception("Could not persist remote AI execution metadata.")
 
     @staticmethod
     def _compact_context(results: dict) -> dict:

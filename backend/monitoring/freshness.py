@@ -10,6 +10,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from backend.database.models import Station, Observation
 
+INVALID_OBSERVATION_QUALITY = (
+    "unvalidated_unit", "retrieval_timestamp", "extreme_value", "doubtful", "unvalidated",
+)
+
 
 def is_recent_observation(value, max_age_hours: float = 3, now: datetime.datetime | None = None) -> bool:
     """Return whether an observation timestamp is within the accepted real-time window."""
@@ -42,7 +46,8 @@ class FreshnessMonitor:
         now = datetime.datetime.utcnow()
         obs = self.db.query(Observation).filter(
             Observation.station_id == station_id,
-            Observation.variable_id == variable_id
+            Observation.variable_id == variable_id,
+            Observation.quality_status.notin_(INVALID_OBSERVATION_QUALITY),
         ).order_by(desc(Observation.observed_at)).first()
 
         if not obs:
@@ -124,7 +129,7 @@ class FreshnessMonitor:
                 counted_lags += 1
             station_reports.append(rep)
 
-        avg_lag_seconds = int(total_lag / counted_lags) if counted_lags > 0 else 0
+        avg_lag_seconds = int(total_lag / counted_lags) if counted_lags > 0 else None
 
         return {
             "variable_id": variable_id,

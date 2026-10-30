@@ -124,6 +124,7 @@ def pipeline_jobs() -> list[tuple[str, int, Callable[[], dict]]]:
         run_ideam_radar_job, run_nasa_power_job, run_open_meteo_job,
     )
     from backend.services.automl import run_auto_ml_job
+    from backend.services.forecasting import run_forecast_job
     from backend.services.ingestion import run_scheduled_discovery_job, run_scheduled_siata_job
 
     def interval(name: str, fallback: int, minimum: int = 60) -> int:
@@ -145,4 +146,6 @@ def pipeline_jobs() -> list[tuple[str, int, Callable[[], dict]]]:
         jobs.append(("ideam_radar", interval("IDEAM_RADAR_CATALOG_INTERVAL_SECONDS", 21600), run_ideam_radar_job))
     if os.getenv("SIATA_AUTO_ML_ENABLED", "true").lower() not in {"0", "false", "no"}:
         jobs.append(("automl", interval("SIATA_AUTO_ML_INTERVAL_SECONDS", 21600), run_auto_ml_job))
+    if os.getenv("SIATA_FORECASTS_ENABLED", "true").lower() not in {"0", "false", "no"}:
+        jobs.append(("model_forecasts", interval("SIATA_FORECAST_INTERVAL_SECONDS", 3600), run_forecast_job))
     return jobs

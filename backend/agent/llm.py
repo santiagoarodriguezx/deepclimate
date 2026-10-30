@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+import datetime
 from collections import deque
 
 import httpx
@@ -56,17 +57,46 @@ class RemoteExplanationAssistant:
         }
         headers = {"Authorization": f"Bearer {api_key}"}
         headers.update(self._extra_headers())
-        with httpx.Client(timeout=20.0) as client:
-            response = client.post(self.API_URL, headers=headers, json=payload)
-            response.raise_for_status()
+        started_at = datetime.datetime.now(datetime.timezone.utc)
+        started = time.monotonic()
         try:
+            with httpx.Client(timeout=20.0) as client:
+                response = client.post(self.API_URL, headers=headers, json=payload)
+                response.raise_for_status()
             content = response.json()["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError(f"{self.PROVIDER} devolvió una respuesta vacía.")
         except (KeyError, IndexError, TypeError) as exc:
-            raise ValueError(f"{self.PROVIDER} devolvió una respuesta sin texto.") from exc
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError(f"{self.PROVIDER} devolvió una respuesta vacía.")
+            error = ValueError(f"{self.PROVIDER} devolvió una respuesta sin texto.")
+            self.last_execution = self._execution_record(
+                model, payload, started_at, started, status="failed", error=error,
+            )
+            raise error from exc
+        except Exception as exc:
+            self.last_execution = self._execution_record(
+                model, payload, started_at, started, status="failed", error=exc,
+            )
+            raise
+        self.last_execution = self._execution_record(
+            model, payload, started_at, started, status="success", output=content.strip(),
+        )
         logger.info("%s explanation completed (model=%s).", self.PROVIDER, model)
         return content.strip(), model
+
+    def _execution_record(self, model, payload, started_at, started, status, output=None, error=None):
+        return {
+            "provider": self.PROVIDER,
+            "model": model,
+            "endpoint": self.API_URL,
+            "domain": "Valle de Aburrá · interpretación de evidencia del proyecto",
+            "started_at": started_at.isoformat(),
+            "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "latency_ms": int((time.monotonic() - started) * 1000),
+            "status": status,
+            "input": payload["messages"],
+            "output": output,
+            "error": f"{type(error).__name__}: {str(error)[:400]}" if error else None,
+        }
 
     def _extra_headers(self) -> dict[str, str]:
         return {}
@@ -100,7 +130,7 @@ class OpenRouterAssistant(RemoteExplanationAssistant):
     def _extra_headers(self) -> dict[str, str]:
         return {
             "HTTP-Referer": "http://localhost",
-            "X-Title": "SIATA Intelligence",
+            "X-Title": "DeepClimate",
         }
 
 

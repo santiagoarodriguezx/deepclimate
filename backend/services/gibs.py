@@ -32,6 +32,7 @@ def get_gibs_layers(force_refresh: bool = False) -> dict:
         namespaces = {
             "wmts": "http://www.opengis.net/wmts/1.0",
             "ows": "http://www.opengis.net/ows/1.1",
+            "xlink": "http://www.w3.org/1999/xlink",
         }
         result_layers = []
         for layer in root.findall(".//wmts:Layer", namespaces):
@@ -50,6 +51,14 @@ def get_gibs_layers(force_refresh: bool = False) -> dict:
                 node.findtext("wmts:TileMatrixSet", default="", namespaces=namespaces)
                 for node in layer.findall("wmts:TileMatrixSetLink", namespaces)
             ), "")
+            style = layer.find("wmts:Style", namespaces)
+            legend_urls = {}
+            if style is not None:
+                for legend in style.findall("wmts:LegendURL", namespaces):
+                    role = legend.attrib.get("{http://www.w3.org/1999/xlink}role", "").rsplit("/", 1)[-1]
+                    url = legend.attrib.get("{http://www.w3.org/1999/xlink}href")
+                    if role in {"horizontal", "vertical"} and url:
+                        legend_urls[role] = url
             if not time_default or not matrix_set:
                 continue
             result_layers.append({
@@ -60,6 +69,7 @@ def get_gibs_layers(force_refresh: bool = False) -> dict:
                 "tile_matrix_set": matrix_set,
                 "max_zoom": int(matrix_set.rsplit("Level", 1)[-1]) if "Level" in matrix_set else None,
                 "formats": [node.text for node in layer.findall("wmts:Format", namespaces) if node.text],
+                "legend_url": legend_urls.get("horizontal") or legend_urls.get("vertical"),
             })
         if len(result_layers) != len(LAYERS):
             raise ValueError("NASA GIBS no devolvió todas las capas solicitadas.")

@@ -10,10 +10,10 @@ from backend.agent.tools.env_tools import EnvironmentalToolKit
 from backend.database.connection import get_db
 from backend.database.models import Observation, Station
 from backend.ingestion.external_sources import _execute_logged
+from backend.monitoring.freshness import INVALID_OBSERVATION_QUALITY
 
 logger = logging.getLogger(__name__)
 MIN_OBSERVATIONS_TO_SCREEN = 72
-MAX_CANDIDATES_PER_RUN = 8
 
 
 def _train_batch(db):
@@ -26,10 +26,10 @@ def _train_batch(db):
         Station.station_type == "air_quality",
         Observation.variable_id == "PM25",
         Observation.observed_at >= cutoff,
-        Observation.quality_status.notin_(["unvalidated_unit", "retrieval_timestamp"]),
+        Observation.quality_status.notin_(INVALID_OBSERVATION_QUALITY),
     ).group_by(Observation.station_id).having(
         func.count(Observation.id) >= MIN_OBSERVATIONS_TO_SCREEN,
-    ).order_by(desc("points")).limit(MAX_CANDIDATES_PER_RUN).all()
+    ).order_by(desc("points")).all()
 
     if not candidates:
         decision = JevDecisionEngine().decide_model_candidate(
