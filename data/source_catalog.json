@@ -1,0 +1,169 @@
+{
+  "version": "1.0.0",
+  "last_discovered": "2026-10-30T16:43:50.276726",
+  "sources": [
+    {
+      "id": "siata_air_quality_poeca",
+      "name": "Red de Calidad del Aire - Estaciones POECA (PM2.5)",
+      "type": "realtime",
+      "frequency_seconds": 300,
+      "format": "json",
+      "url": "https://siata.gov.co/siata_nuevo/index.php/capa_service/consultar_capa_carga",
+      "method": "POST",
+      "payload": {
+        "id_capa": "C_00000000000000000000602"
+      },
+      "variables": [
+        "PM25",
+        "ICA"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "siata_air_quality_no_poeca",
+      "name": "Red de Calidad del Aire - Estaciones NO POECA (PM2.5)",
+      "type": "realtime",
+      "frequency_seconds": 300,
+      "format": "json",
+      "url": "https://siata.gov.co/siata_nuevo/index.php/capa_service/consultar_capa_carga",
+      "method": "POST",
+      "payload": {
+        "id_capa": "C_00000000000000000000603"
+      },
+      "variables": [
+        "PM25",
+        "ICA"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "siata_meteo_realtime",
+      "name": "Red Meteorológica y Pluviométrica SIATA",
+      "type": "realtime",
+      "frequency_seconds": 180,
+      "format": "json",
+      "url": "https://siata.gov.co/data/siata_app/PluviometricaMeteo.json",
+      "method": "GET",
+      "variables": [
+        "temperature",
+        "humidity",
+        "pressure",
+        "wind_speed",
+        "wind_direction",
+        "rain"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "siata_rain_realtime",
+      "name": "Red de Pluviómetros del Valle de Aburrá",
+      "type": "realtime",
+      "frequency_seconds": 300,
+      "format": "json",
+      "url": "https://siata.gov.co/data/siata_app/Pluviometrica.json",
+      "method": "GET",
+      "variables": [
+        "rain"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "siata_stream_level_realtime",
+      "name": "Red de Sensores de Nivel de Quebradas y Río Medellín",
+      "type": "realtime",
+      "frequency_seconds": 300,
+      "format": "json",
+      "url": "https://siata.gov.co/data/siata_app/Nivel.json",
+      "method": "GET",
+      "variables": [
+        "river_level"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "siata_air_freshness_verifier",
+      "name": "Monitor de Verificación de Frescura Red de Aire SIATA",
+      "type": "hourly",
+      "frequency_seconds": 600,
+      "format": "html_table",
+      "url": "https://siata.gov.co/CalidadAire/verificacionEstacionesRedAireValidadoSIATA.php",
+      "method": "GET",
+      "variables": [
+        "PM25",
+        "PM10",
+        "O3",
+        "NO",
+        "NO2",
+        "CO",
+        "SO2"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "siata_station_inventory",
+      "name": "Inventario Oficial de Estaciones de Calidad del Aire",
+      "type": "daily",
+      "frequency_seconds": 86400,
+      "format": "csv",
+      "url": "https://siata.gov.co/CalidadAire/cadatos/Estaciones.txt",
+      "method": "GET",
+      "variables": [
+        "station_metadata"
+      ],
+      "status": "active"
+    },
+    {
+      "id": "siata_historical_ideam",
+      "name": "Repositorio Histórico de Datos Validados SIATA / IDEAM",
+      "type": "historical",
+      "frequency_seconds": 86400,
+      "format": "zip_xls",
+      "url": "https://siata.gov.co/IDEAM/",
+      "method": "GET",
+      "discovered_archives_count": 89,
+      "latest_archives": [
+        {
+          "filename": "DatosValidados_agosto2020.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_agosto2020.zip"
+        },
+        {
+          "filename": "DatosValidados_agosto2019.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_agosto2019.zip"
+        },
+        {
+          "filename": "DatosValidados_abril2026.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_abril2026.zip"
+        },
+        {
+          "filename": "DatosValidados_abril2025.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_abril2025.zip"
+        },
+        {
+          "filename": "DatosValidados_abril2024.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_abril2024.zip"
+        },
+        {
+          "filename": "DatosValidados_abril2023.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_abril2023.zip"
+        },
+        {
+          "filename": "DatosValidados_abril2022.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_abril2022.zip"
+        },
+        {
+          "filename": "DatosValidados_abril2021.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_abril2021.zip"
+        },
+        {
+          "filename": "DatosValidados_abril2020.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_abril2020.zip"
+        },
+        {
+          "filename": "DatosValidados_MayoDiciembre-2016.zip",
+          "url": "https://siata.gov.co/IDEAM/DatosValidados_MayoDiciembre-2016.zip"
+        }
+      ],
+      "status": "active"
+    }
+  ]
+}
